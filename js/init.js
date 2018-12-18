@@ -10,11 +10,12 @@ $(document).on("click", "#login_btn", function () {
    // do login
    
     const Http = new XMLHttpRequest();
-    var url='https://www.arcgis.com/sharing/generateToken?username={0}&password={1}&referer=*&f=json';
+    var ref = window.location.origin;
+    var url='https://www.arcgis.com/sharing/generateToken?username={0}&password={1}&referer={2}&f=json';
     var un = $("#username").val();
     var pw = $("#password").val();    
 
-    var parsedUrl = url.replace("{0}", un).replace("{1}", pw);
+    var parsedUrl = url.replace("{0}", un).replace("{1}", pw).replace("{2}", ref);
 
     Http.open("GET", parsedUrl);
     Http.send();

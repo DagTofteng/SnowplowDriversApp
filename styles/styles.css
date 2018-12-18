@@ -1,0 +1,54 @@
+.btn-circle.btn-xl {
+  width: 140px;
+  height: 140px;
+  padding: 10px 16px;
+  font-size: 24px;
+  line-height: 1.33;
+  border-radius: 70px;
+}
+
+.btn-circle i {
+    font-size: 40px;
+}
+
+.btn-circle i.fa-stop {
+    margin-top: 35px;
+}
+
+
+#stopButton.btn-circle:after {
+    content: " ";
+    display: block;
+    width: 144px;
+    height: 144px;
+    margin: 1px;
+    border-radius: 50%;
+    margin-top: -116px;
+    margin-left: -19px;
+    border: 7px solid #fff;
+    border-color: #fff transparent transparent transparent;
+    animation: dual-ring 1.8s linear infinite;
+  }
+  @keyframes dual-ring {
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+  
+  .mapToggleButton {
+    width: 200px;
+    height: 50px;
+    line-height: 50px;
+    border: 1px solid #999;
+    border-right: none;
+    border-radius: 4px 0 0 4px;
+    position: absolute;
+    right: 0;
+    background: #c00010;
+    color: white;
+    cursor: pointer;
+  }
+  

@@ -1,0 +1,151 @@
+﻿<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" /> 
+    <title>Skedsmo kommune - snøbrøyting app for sjåfør</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.1/css/all.css" integrity="sha384-gfdkjb5BdAXd+lj+gudLWI+BXq4IuLW5IT+brZEZsLFm++aCMlF1V92rMkPaX4PP" crossorigin="anonymous">
+    <link rel="stylesheet" href="styles/styles.css">
+
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js" integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.3/umd/popper.min.js" integrity="sha384-ZMP7rVo3mIykV+2+9J3UJ46jBk0WLaUAdn689aCwoqbBJiSnjAK/l8WvCWPIPm49" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/js/bootstrap.min.js" integrity="sha384-ChfqqxuZUCnJSK3+MXmPNIyE6ZbWh2IMqE241rYiqJxyMiZ6OW/JmZQ5stwEULTy" crossorigin="anonymous"></script>
+    <script src="https://js.arcgis.com/4.10/"></script>
+    <script src="js/init.js"></script>
+
+    <script>
+        //     require([              
+        //         "dojo/_base/array",
+        //         "dojo/_base/lang",    
+        //         "dojo/promise/all",
+        //         "dojo/topic",
+        //         "esri/Map",
+        //         "esri/Basemap",
+        //         "esri/WebMap",
+        //         "esri/config",    
+        //         "esri/geometry/Point",
+        //         "esri/geometry/ScreenPoint",        
+        //         "esri/views/MapView",
+        //         "esri/widgets/ScaleBar",
+        //         "esri/request",
+        //         "esri/symbols/PictureMarkerSymbol",
+        //         "esri/Graphic",
+        //         "dojo/request/xhr",
+        //         "dojo/domReady!"
+        //     ], function(
+        //         array,
+        //         lang,        
+        //         all,
+        //         topic,
+        //         Map,
+        //         Basemap,
+        //         WebMap,
+        //         esriConfig,                
+        //         Point,
+        //         ScreenPoint,
+        //         MapView,
+        //         ScaleBar,
+        //         esriRequest,
+        //         PictureMarkerSymbol,
+        //         Graphic,
+        //         xhr) {
+
+        //     var map = new WebMap({
+        //     portalItem: {
+        //         id: "c312172427424e319c9836fd06899d36"
+        //         }
+        //     });
+        //     var referenceBasemap = "";        
+        //     map.load()
+        //         .then(function () {
+        //             // load the basemap to get its layers created
+        //             referenceBasemap = map.basemap.referenceLayers.items[0].id;
+        //             return map.basemap.load();
+
+        //         })
+        //         .then(function () {
+        //             // grab all the layers and load them
+        //             var allLayers = map.allLayers;
+        //             var promises = allLayers.map(function (layer) {
+        //                 return layer.load();
+        //             });
+        //             return all(promises.toArray());
+        //         })
+        //         .then(function (layers) {
+        //             array.forEach(layers, function (layer) {
+        //                 if (layer.id == referenceBasemap) {
+        //                     layer.visible = true
+        //                 }
+        //                 else {
+        //                     layer.visible = false;
+        //                 }
+        //             });
+        //         });
+        //     // Create the MapView and reference the Map in the instance
+        //     var view = new WebMap({
+        //         container: "map",
+        //         map: map,                        
+        //     });
+        // });
+    </script>
+</head>
+<body>    
+    <div class="col-12 text-center">
+        <div class="m-4">
+            <img src="images/skedsmo_logo.jpg" height="60" />
+        </div>
+        <h2 class="m-4">Sjåfør app</h2>   
+        <span id="userInfo"></span> 
+
+        <div id="step1">
+            <h6 class="mb-4">LOGG INN</h6>
+            <label>Brukernavn</label>
+            <input type="text" class="form-control text-center" id="username" placeholder="ole.normann@skedsmokommune.no" value="KommuneTest1">
+            <label class="mt-4">Passord</label>
+            <input type="password" class="form-control text-center" id="password" value="Solastrand18!" >
+            <button type="button" id="login_btn" class="btn btn-success btn-block mt-4">LOGG INN</button>
+            <span class="error" id="loginText"></span>
+        </div>
+        <div id="step2" style="display:none">                                   
+            <select class="custom-select m-4" id="rodeDropdown">
+                <option selected>Velg rode...</option>
+                <option value="Rode1">Rode 1 (Slettevoldveien - Grimsrud)</option>
+                <option value="Rode2">Rode 2 (Kaketangen - Ballerud)</option>
+                <option value="Rode3">Rode 3 (Musespretten - Okserud)</option>
+                <option value="Rode4">Rode 4 (Fresetassen - Helgerud)</option>
+                <option value="Rode5">Rode 5 (Downtown - Laksefoss)</option>
+            </select>  
+        </div>   
+        <div id="step3" style="display:none">  
+            <div id="mapToggleButton"class="mapToggleButton">
+                <span id="showMap"><i class="fas fa-chevron-left" ></i> Vis rute i kart</span>
+                <span id="hideMap" style="display:none"><i class="fas fa-chevron-right"></i> Skjul kart</span>
+            </div>
+            <!-- <div id="map">
+                
+                https://testkommune.maps.arcgis.com/apps/View/index.html?appid=f9d44cff82264f81ba473b651199a8e7
+            </div> -->
+            <div id="choosenRodeContainer" class="m-4">
+                <h6>Valgt rode: </h6>
+                <h4><span id="choosenRode"></span> <a href="#" onclick="return false" id="changeRode">(endre)</a></h4>
+            </div>
+            
+            <div class="mt-4" id="startStopContainer">
+            
+                <button type="button" class="btn btn-success btn-circle btn-xl" id="startButton">
+                    <i class="fas fa-play"></i>                
+                </button>             
+
+                <button type="button" class="btn btn-danger btn-circle btn-xl" id="stopButton" style="display: none;">
+                        <i class="fas fa-stop"></i><br>
+                        <h6 id="counter"></h6>
+                </button>       
+                <div id="timeInfoContainer" class="mt-4"> 
+                    <h6 id="timeInfoText"></h6>
+                </div>
+            </div>
+        </div>
+    </div>    
+</body>
+</html>

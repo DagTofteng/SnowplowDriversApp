@@ -47,6 +47,7 @@ require([
     Query) {
 
     var featureServiceUrl = "https://services.arcgis.com/PdUYt91ohJfR04kk/arcgis/rest/services/Skedsmo_Br%C3%B8yteroder_WFL1/FeatureServer/";
+    var featureServiceIDList = [0,1]; // 0 = linje, 1 = polygon
     var timestampStart;
     var timestampStop;
     var selectedRodeID;
@@ -85,34 +86,17 @@ require([
         
         var rodeArray = [];
         
-        var queryTaskLine = new QueryTask({
-            url: featureServiceUrl + "0?token=" + token
-        });
+         // Kjør 2 queryTasker (mot linje og polygon)
+         var numberOfQueryTasksCompleted = 0;
 
-        // Kjør 2 queryTasker (mot linje og polygon)
-        var numberOfQueryTasksCompleted = 0;
-        queryTaskLine.execute(query).then(function(results){            
-            array.forEach(results.features, function (item) {
-                if (item.attributes.RodeID && item.attributes.RodeNavn) {
-                    var existInArray = false;
-                    for(i = 0; i < rodeArray.length; i++) {
-                        if (rodeArray[i].RodeID == item.attributes.RodeID && rodeArray[i].RodeNavn == item.attributes.RodeNavn) {
-                            existInArray = true;
-                            break;
-                        }
-                    }
-                    if (!existInArray) {
-                        rodeArray.push({ RodeID: item.attributes.RodeID, RodeNavn: item.attributes.RodeNavn });
-                    }
-                }
+        array.forEach(featureServiceIDList, function (id) {                
+        
+            var queryTask = new QueryTask({
+                url: featureServiceUrl + id + "?token=" + token
             });
-    
-            rodeArray.sort();  
-            numberOfQueryTasksCompleted++;
-            var queryTaskPolygon = new QueryTask({
-                url: featureServiceUrl + "1?token=" + token
-            });
-            queryTaskPolygon.execute(query).then(function(results){            
+
+           
+            queryTask.execute(query).then(function(results){            
                 array.forEach(results.features, function (item) {
                     if (item.attributes.RodeID && item.attributes.RodeNavn) {
                         var existInArray = false;
@@ -126,16 +110,40 @@ require([
                             rodeArray.push({ RodeID: item.attributes.RodeID, RodeNavn: item.attributes.RodeNavn });
                         }
                     }
-                });    
+                });
+        
                 rodeArray.sort();  
-                numberOfQueryTasksCompleted++;          
+                numberOfQueryTasksCompleted++;
                 if (numberOfQueryTasksCompleted == 2) {
                     buildRodeDropdown(rodeArray);
                 }
-            }); 
+                
+                // queryTaskPolygon.execute(query).then(function(results){            
+                //     array.forEach(results.features, function (item) {
+                //         if (item.attributes.RodeID && item.attributes.RodeNavn) {
+                //             var existInArray = false;
+                //             for(i = 0; i < rodeArray.length; i++) {
+                //                 if (rodeArray[i].RodeID == item.attributes.RodeID && rodeArray[i].RodeNavn == item.attributes.RodeNavn) {
+                //                     existInArray = true;
+                //                     break;
+                //                 }
+                //             }
+                //             if (!existInArray) {
+                //                 rodeArray.push({ RodeID: item.attributes.RodeID, RodeNavn: item.attributes.RodeNavn });
+                //             }
+                //         }
+                //     });    
+                //     rodeArray.sort();  
+                //     numberOfQueryTasksCompleted++;          
+                //     if (numberOfQueryTasksCompleted == 2) {
+                //         buildRodeDropdown(rodeArray);
+                //     }
+                // }); 
 
-           
-        }); 
+            
+            }); 
+        
+        });
         
     }
 
@@ -231,7 +239,7 @@ require([
     });
 
     $(document).on("click", "#startButton", function () {
-        var feature = getFeatureForID(selectedRodeID);
+        updateFeatureService(selectedRodeID, "SisteStartTidspunkt");
         $("#startButton").hide();
         $("#stopButton").show();        
         
@@ -244,7 +252,12 @@ require([
         incrementSeconds();
         // Send timestamp kall api
     });
-    $(document).on("click", "#stopButton", function () {
+    $(document).on("click", "#stopButton", function (e) {
+        if(e.hasOwnProperty('originalEvent')) {
+        // Probably a real click.
+            updateFeatureService(selectedRodeID, "SisteFerdigTidspunkt");
+        }    
+    
         $("#startButton").show();
         $("#stopButton").hide();
         
@@ -306,27 +319,42 @@ require([
         $("#" + id).show();
     }
 
-    function getFeatureForID(id) {
-        var layer = window.map.allLayers.find(function(layer) {
-            return layer.layerId === 0;
-           });
-           const attributes = {};
-           attributes["OBJECTID"] = 2;
-           attributes["EmpTidsforbrukMinutter"] = 41;           
-         
-           const updateFeature =  new Graphic({  
-            geometry: null,                        
-            attributes: attributes
-           });
-           const edits = {
-            updateFeatures: [updateFeature]
-            }
-         
-         
-           const promise = layer.applyEdits(edits).then(function(result){             
-             var test = result;
-           });        
-
-    }
+    function updateFeatureService(rodeId, fieldToUpdate) {
+        var query = new Query();    
+        query.returnGeometry = true;    
+        query.outFields = ["*"];        
+        query.where = "RodeID=" + rodeId; 
         
+        var token = sessionStorage.getItem("broyteAppToken");
+        var dateNow = Date.now();  
+        array.forEach(featureServiceIDList, function (id) {        
+            var queryTask = new QueryTask({
+                url: featureServiceUrl + id + "?token=" + token
+            });        
+            
+            queryTask.execute(query).then(function(results){   
+                var layer = window.map.allLayers.find(function(layer) {
+                    return layer.layerId === id;
+                });
+                var updateFeatures = [];
+                
+                array.forEach(results.features, function(rode) {  
+                    var obj = rode;                
+                    obj.attributes[fieldToUpdate] = dateNow;      
+                    const updateFeature = new Graphic();
+                    updateFeature.attributes = obj.attributes;
+                    updateFeature.geometry = obj.geometry;
+                    // Hvis ikke objektet har geometeri klarer vi ikke å oppdatere de. TODO: Fikse datagrunnlaget.
+                    if (obj.geometry) {
+                        updateFeatures.push(updateFeature);
+                    }
+                });
+                const promise = layer.applyEdits({updateFeatures: updateFeatures}).then(function(result){             
+                    var test = result;
+                }); 
+            });
+        })        
+    }     
+    
 });
+

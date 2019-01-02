@@ -46,14 +46,17 @@ require([
     QueryTask, 
     Query) {
 
-    var featureServiceUrl = "https://services.arcgis.com/PdUYt91ohJfR04kk/arcgis/rest/services/Skedsmo_Br%C3%B8yteroder_WFL1/FeatureServer/";
+    var mapsSharingUrl = "https://testkommune.maps.arcgis.com/sharing/rest/";
+    var featureServiceUrl = "https://services.arcgis.com/PdUYt91ohJfR04kk/arcgis/rest/services/Skedsmo_Br%C3%B8yteroder_WFL1/FeatureServer/";    
     var featureServiceIDList = [0,1]; // 0 = linje, 1 = polygon
-    var featureServiceTableIDList = [2,3];
+    var featureServiceTableIDList = [2];        
     var timestampStart;
     var timestampStop;
     var selectedRodeID;
     var selectedRodeText;
+    var timer;
     var rodeArray = [];
+    
    
     // if (localStorage.getItem("broyteAppTokenExpiration")) {
     //     var tokenExpiration = localStorage.getItem("broyteAppTokenExpiration");
@@ -62,12 +65,17 @@ require([
     //     }
     // }
 
-    function initMapAndFeatureService(token) {        
+    function initMapAndFeatureService(token, userId) {        
         IdentityManager.registerToken({
-            server: "https://testkommune.maps.arcgis.com/sharing/rest",
+            server: mapsSharingUrl,
             token: token
         });
-
+        
+        getUserInfo(userId).then(t => {
+            var fullname = t.data.fullName;
+            $("#userInfo").text(fullname)
+        });
+        
         var map = new WebMap({
         portalItem: {
             id: "4db252250bdb46338e49f7dbfc57c661"  
@@ -79,19 +87,34 @@ require([
         });
         window.map = map;
         
-        // Get unique Rodelist
-        getRodeList();      
+        showStep("step2");
+    }
+
+    function getUserInfo(userId) {
+        var getUserInfoUrl = mapsSharingUrl + "community/users/" + userId;
+        var token = localStorage.getItem("broyteAppToken");
+        if (token) {
+            var request = esriRequest(getUserInfoUrl + "?token=" + token, {
+                method: 'get',
+                responseType: 'json',
+                query: {
+                f: 'json',
+                }
+            });
+            return request;
+        }
+        return null;
     }
 
     function getRodeList() {
         var query = new Query();
         query.returnGeometry = false;
-        query.outFields = ["RodeID,RodeNavn"];
+        query.outFields = ["RodeID,RodeNavn,SisteStartTidspunkt,SisteFerdigTidspunkt,Editor"];
         query.returnDistinctValues = true;
         query.returnGeometry = false;
         query.where = "1=1";    
-        
-        executeQueryTask(query, combinePointAndPolygonData_rodeList);
+        rodeArray = [];        
+        executeQueryTask(query, combinePointAndPolygonData_rodeList);        
     }
 
     function getLatestDate() {
@@ -106,7 +129,7 @@ require([
     }
     
     function executeQueryTask(query, callbackFunction) {
-    var token = sessionStorage.getItem("broyteAppToken")
+    var token = localStorage.getItem("broyteAppToken")
         // Kjør 2 queryTasker (mot linje og polygon)
      var numberOfQueryTasksCompleted = 0;
      array.forEach(featureServiceIDList, function (id) {                       
@@ -122,7 +145,7 @@ require([
      });
     }        
 
-    function combinePointAndPolygonData_rodeList(results, numberOfQueryTasksCompleted) {         
+    function combinePointAndPolygonData_rodeList(results, numberOfQueryTasksCompleted) {     
         array.forEach(results.features, function (item) {
             if (item.attributes.RodeID && item.attributes.RodeNavn) {
                 var existInArray = false;
@@ -133,29 +156,49 @@ require([
                     }
                 }
                 if (!existInArray) {
-                    rodeArray.push({ RodeID: item.attributes.RodeID, RodeNavn: item.attributes.RodeNavn });
+                    var active = false;
+                    var timestampLatestStart = new Date(item.attributes.SisteStartTidspunkt);
+                    var timestampLatestStop = new Date(item.attributes.SisteFerdigTidspunkt);  
+                    if (timestampLatestStart.getTime() > timestampLatestStop.getTime()) {
+                        active = true;
+                    };
+                    rodeArray.push({ RodeID: item.attributes.RodeID, RodeNavn: item.attributes.RodeNavn, Active: active, Editor: item.attributes.Editor });
                 }
             }
         });
         
-        rodeArray.sort();  
+        rodeArray.sort((a,b) => (a.RodeNavn > b.RodeNavn) ? 1 : ((b.RodeNavn > a.RodeNavn) ? -1 : 0));  
         if (numberOfQueryTasksCompleted == 2) {
-            buildRodeDropdownHTML(rodeArray);
+            buildRodeListHTML(rodeArray);
         }
     };
-    function buildRodeDropdownHTML(data) {
-        var rodeDropdownHtml = "<option value='' selected>Velg rode...</option>{0}";
+    function buildRodeListHTML(data) {
+        var rodeListHtml = "";
+    
         array.forEach(data, function (rode) {
-            var optionHtml = "<option value='" + rode.RodeID + "'>" + rode.RodeNavn + "</option>";
-            rodeDropdownHtml += optionHtml;
+            var statusHtml = "<span class='status'></span>";
+            var arrow = "<span class='arrow'><i class='fas fa-chevron-right'></i></span>";
+            var statusAndArrow = "<div class='statusAndArrow'>" + statusHtml + arrow +"</div>";
+            if (rode.Active) {
+                var name = rode.Editor;
+                getUserInfo(rode.Editor).then(r => {
+                    if (r.data.fullName) {                    
+                        name = r.data.fullName;
+                        // <i class='fas fa-snowplow'></i>
+                        $("#rodeList").find("a[data-value='" + rode.RodeID + "']").find(".status").html("Brøyting pågår (" + name + ")");                        
+                    }                    
+                });                
+            }
+            var listHtml = "<a href='#' data-text='" + rode.RodeNavn + "' data-value='" + rode.RodeID + "' class='list-group-item list-group-item-action text-left'>" + rode.RodeNavn + statusAndArrow +"</a>";
+            rodeListHtml += listHtml;
         });
 
-        $("#rodeDropdown").html(rodeDropdownHtml);
+        $("#rodeList").html(rodeListHtml);
 
         if (localStorage.getItem("broyteAppLastRodeID")) {
             var lastRodeID = localStorage.getItem("broyteAppLastRodeID");
-            $("#rodeDropdown").val(lastRodeID).trigger("change");
-            }
+            $(("#rodeList").data("value") == lastRodeID).click();
+        }
         else {        
                 selectedRodeText = null;
                 selectedRodeID = null;
@@ -184,18 +227,16 @@ require([
             var timestampLatestStop = new Date(latestPlowDateArray[0].SisteFerdigTidspunkt);
             var timestampLatestStartReadable = timestampLatestStart.toLocaleString();
             var timestampLatestStopReadable = timestampLatestStop.toLocaleString();
-            var returnText = "Sist påbegynt brøyet: " + timestampLatestStartReadable;
-            if (timestampLatestStopReadable) {
-                returnText+= "<br/>Sist avsluttet brøyting: " + timestampLatestStopReadable;
-            }
-
+            $("#latestPlowStartDate").html(timestampLatestStartReadable);
+            $("#latestPlowStopDate").html(timestampLatestStopReadable);                        
+            
             if (timestampLatestStart.getTime() > timestampLatestStop.getTime()) {
                 
                 var now = new Date();    
                 timestampStart = timestampLatestStart.getTime();
                 var diff = diff_hours(timestampStart, now);  
                 
-                returnText= "Brøyting pågår på valgt rode. <br/>Du må avslutte forrige før du kan starte en ny.";
+                $("#warningPlowingIsActive").show();
                 $("#startButton").hide();
                 $("#stopButton").show();        
                 
@@ -204,11 +245,10 @@ require([
                 $("#counter").text(diff);
                 incrementSeconds(timestampLatestStart);
             }
-            $("#latestPlowDate").html(returnText);
+            else {                
+                $("#warningPlowingIsActive").hide();
 
-
-
-            
+            }
 
         }
         
@@ -234,14 +274,13 @@ require([
             if (Http.responseText && Http.readyState == 4 && Http.status == 200) {
                 var parsedRes = JSON.parse(Http.responseText);        
                 if (parsedRes && parsedRes.token) {
-                    sessionStorage.setItem("broyteAppToken", parsedRes.token);   
+                    localStorage.setItem("broyteAppToken", parsedRes.token);   
                     var expiration = new Date();
-                    sessionStorage.setItem("broyteAppTokenExpiration", expiration);   
+                    localStorage.setItem("broyteAppTokenExpiration", expiration);   
 
-                    initMapAndFeatureService(parsedRes.token);        
+                    initMapAndFeatureService(parsedRes.token, un);        
                     
-                    showStep("step2");
-                    $("#userInfo").text("Hei Ståle Klommestein!")
+                                        
                 }
                 else {
                     $("#loginText").text("Brukernavn og/eller passord stemmer ikke.")
@@ -254,9 +293,9 @@ require([
     
     });
 
-    $(document).on("change", "#rodeDropdown", function (e) {
-        var newValueText = $(this).find("option:selected").text();
-        var newValueID = e.currentTarget.value;
+    $(document).on("click", "#rodeList a", function (e) {
+        var newValueText = $(this).data("text");
+        var newValueID = $(this).data("value");
         if (newValueID) {        
             selectedRodeText = newValueText;
             selectedRodeID = newValueID;
@@ -273,10 +312,7 @@ require([
         
     });
 
-    $(document).on("click", "#changeRode", function (e) {    
-        timestampStop = Date.now();    
-        var totalTime = timestampStop - timestampStart;
-        $("#stopButton").click();
+    $(document).on("click", "#changeRode", function (e) {                    
         showStep("step2");
     });
 
@@ -343,8 +379,12 @@ require([
 
     function incrementSeconds(startTime) {
         var seconds = 0;
+
+        if (timer) {
+        clearInterval(timer);
+        }
         
-        setInterval(function () {
+        timer = setInterval(function () {
             var counter = diff_hours(startTime, Date.now())
             $("#counter").text(counter);
             seconds++;
@@ -358,8 +398,15 @@ require([
         $("#step3").hide();
         $("#" + id).show();
 
+        if (id == "step2") {
+             // Get unique Rodelist with status
+            getRodeList();      
+        }
+
         // 3 = Vis valgt rute med evt Playbutton. Hent opp sist-måkt dato.
         if (id == "step3") {
+            $("#startButton").show();
+            $("#stopButton").hide();
             getLatestDate();
         }
     }
@@ -370,7 +417,7 @@ require([
         query.outFields = ["*"];        
         query.where = "RodeID=" + rodeId; 
         
-        var token = sessionStorage.getItem("broyteAppToken");
+        var token = localStorage.getItem("broyteAppToken");
         var dateNow = Date.now();  
         array.forEach(featureServiceIDList, function (id) {        
             var queryTask = new QueryTask({
@@ -402,30 +449,44 @@ require([
     }
 
     function updateFeatureServiceTable(rodeId) {        
-        var token = sessionStorage.getItem("broyteAppToken");
+        var token = localStorage.getItem("broyteAppToken");
         var dateNow = Date.now();  
         array.forEach(featureServiceTableIDList, function (id) {        
-            var layer = new FeatureLayer(featureServiceUrl + id + "?token=" + token);
-            var addFeatures = [];
-            
-            var attr = { };                
-            attr.RodeNavn = "test";     
-            attr.SisteStartTidspunkt = timestampStart;      
-            attr.SisteFerdigTidspunkt = dateNow;      
-            attr.GateNavn = "testgate";     
+            var layer = new FeatureLayer(featureServiceUrl + id + "addFeatures?token=" + token);
 
-            const addFeature = new Graphic();
-            addFeature.attributes = attr;
-            // addFeature.geometry = obj.geometry;
-            
-            addFeatures.push(addFeature);
-            // if (obj.geometry) {
-            //     addFeatures.push(addFeature);
-            // }
+            [{ attributes: { 
+                RodeNavn: 'Roden min',
+                RodeID:	'123',
+                GateNavn: '-',
+                SisteStartTidspunkt: '2008-01-30 13:00:01',
+                SisteFerdigTidspunkt: '2008-01-30 16:00:01',
+                FaktiskTidsforbrukMin: 180
+                }}]
 
-            const promise = layer.applyEdits({addFeatures: addFeatures}).then(function(result){             
-                var test = result;
-            }); 
+            
+            
+            var obj = { attributes: {} };            
+            obj.attributes.RodeNavn = "test";     
+            obj.attributes.SisteStartTidspunkt = timestampStart;      
+            obj.attributes.SisteFerdigTidspunkt = dateNow;      
+            obj.attributes.GateNavn = "testgate";     
+
+            // Koden under er enda ikke støttet i ArcGIS JS 4.10. Men vil etterhvert...
+            // var addFeatures = [];
+            // const addFeature = new Graphic();
+            // addFeature.attributes = attr;
+            // addFeatures.push(addFeature);            
+            // const promise = layer.applyEdits({addFeatures: addFeatures}).then(function(result){             
+            //     var test = result;
+            // }); 
+
+            var sendObj = [];
+            sendObj.push(obj);
+
+            
+
+
+
         })        
     }
     

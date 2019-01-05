@@ -49,7 +49,7 @@ require([
     var mapsSharingUrl = "https://testkommune.maps.arcgis.com/sharing/rest/";
     var featureServiceUrl = "https://services.arcgis.com/PdUYt91ohJfR04kk/arcgis/rest/services/Skedsmo_Br%C3%B8yteroder_WFL1/FeatureServer/";    
     var featureServiceIDList = [0,1]; // 0 = linje, 1 = polygon
-    var featureServiceTableIDList = [2];        
+    var featureServiceTableID = [2];        
     var timestampStart;
     var timestampStop;
     var selectedRodeID;
@@ -114,10 +114,10 @@ require([
         query.returnGeometry = false;
         query.where = "1=1";    
         rodeArray = [];        
-        executeQueryTask(query, combinePointAndPolygonData_rodeList);        
+        executeQueryTask(query, combinePointAndPolygonData_rodeList, false);        
     }
 
-    function getLatestDate() {
+    function getLatestDate(updateHistoryTable) {
         var query = new Query();
         query.returnGeometry = false;
         query.outFields = ["*"];
@@ -125,10 +125,10 @@ require([
         query.returnGeometry = false;
         query.where = "RodeID=" + selectedRodeID;    
         
-        executeQueryTask(query, combinePointAndPolygonData_latestDate);
+        executeQueryTask(query, combinePointAndPolygonData_latestDate, updateHistoryTable);
     }
     
-    function executeQueryTask(query, callbackFunction) {
+    function executeQueryTask(query, callbackFunction, updateHistoryTable) {
     var token = localStorage.getItem("broyteAppToken")
         // Kjør 2 queryTasker (mot linje og polygon)
      var numberOfQueryTasksCompleted = 0;
@@ -139,7 +139,7 @@ require([
          
          queryTask.execute(query).then(function(results){    
             numberOfQueryTasksCompleted++;
-            callbackFunction(results, numberOfQueryTasksCompleted);
+            callbackFunction(results, numberOfQueryTasksCompleted, updateHistoryTable);
          }); 
      
      });
@@ -205,7 +205,7 @@ require([
             }
     }
 
-    function combinePointAndPolygonData_latestDate(results, numberOfQueryTasksCompleted) {     
+    function combinePointAndPolygonData_latestDate(results, numberOfQueryTasksCompleted, updateHistoryTable) {     
         var latestPlowDateArray = [];    
         array.forEach(results.features, function (item) {
             if (item.attributes.SisteStartTidspunkt) {
@@ -227,6 +227,11 @@ require([
             var timestampLatestStop = new Date(latestPlowDateArray[0].SisteFerdigTidspunkt);
             var timestampLatestStartReadable = timestampLatestStart.toLocaleString();
             var timestampLatestStopReadable = timestampLatestStop.toLocaleString();
+            if (updateHistoryTable) {
+                var numberOfMs = (timestampLatestStop - timestampLatestStart);
+                var numberOfMinutes = Math.floor((numberOfMs/1000)/60);
+                updateFeatureServiceTable(results.features[0].attributes.RodeID, timestampLatestStart, timestampLatestStop, numberOfMinutes);
+            }
             $("#latestPlowStartDate").html(timestampLatestStartReadable);
             $("#latestPlowStopDate").html(timestampLatestStopReadable);                        
             
@@ -333,8 +338,7 @@ require([
     $(document).on("click", "#stopButton", function (e) {
         if(e.hasOwnProperty('originalEvent')) {
         // Probably a real click.
-            updateFeatureService(selectedRodeID, "SisteFerdigTidspunkt");
-            updateFeatureServiceTable(selectedRodeID)
+            updateFeatureService(selectedRodeID, "SisteFerdigTidspunkt");            
         }    
     
         $("#startButton").show();
@@ -407,7 +411,7 @@ require([
         if (id == "step3") {
             $("#startButton").show();
             $("#stopButton").hide();
-            getLatestDate();
+            getLatestDate(false);
         }
     }
 
@@ -441,36 +445,63 @@ require([
                         updateFeatures.push(updateFeature);
                     }
                 });
-                const promise = layer.applyEdits({updateFeatures: updateFeatures}).then(function(result){             
-                    var test = result;
-                }); 
+                // Når bruker klikker på stopp - vil vi overføre start og stopp tidspunkter til historikktabellen. 
+                // Men vi fjerner de ikke fra featureServicen da visualisering i kart bruker tidspunkt-feltene. 
+                // Når bruker derimot klikker "start" neste gang blir de overskrevet i featureservicen.
+                if (fieldToUpdate == "SisteFerdigTidspunkt") { 
+                    layer.applyEdits({updateFeatures: updateFeatures}).then(function(result){             
+                        getLatestDate(true);
+                    }); 
+                }
+                else {
+                    layer.applyEdits({updateFeatures: updateFeatures});
+                }
             });
         })        
     }
 
-    function updateFeatureServiceTable(rodeId) {        
+    function updateFeatureServiceTable(rodeId, timestampStart, timestampStop, numberOfMinutes) {                         
         var token = localStorage.getItem("broyteAppToken");
-        var dateNow = Date.now();  
-        array.forEach(featureServiceTableIDList, function (id) {        
-            var layer = new FeatureLayer(featureServiceUrl + id + "addFeatures?token=" + token);
+        
+        var url = featureServiceUrl + featureServiceTableID + "/applyEdits?token=" + token
 
-            [{ attributes: { 
-                RodeNavn: 'Roden min',
-                RodeID:	'123',
-                GateNavn: '-',
-                SisteStartTidspunkt: '2008-01-30 13:00:01',
-                SisteFerdigTidspunkt: '2008-01-30 16:00:01',
-                FaktiskTidsforbrukMin: 180
-                }}]
+        var obj = [
+            { 
+                "attributes": {                 
+                    RodeID:	rodeId,                
+                    SisteStartTidspunkt: timestampStart,
+                    SisteFerdigTidspunkt: timestampStop,
+                    FaktiskTidsforbrukMin: numberOfMinutes
+                }            
+            }
+        ];
+        var objJson = JSON.stringify(obj);
 
+        
+        if (token) {
+            // var request = xhr(url, {
+            //     method: 'POST',
+            //     data: objJson,
+            //     headers: { 'Content-Type': 'application/json', "token": "Bearer " + sessionStorage.getItem("token_webapi") }                        
+            // });            
             
-            
-            var obj = { attributes: {} };            
-            obj.attributes.RodeNavn = "test";     
-            obj.attributes.SisteStartTidspunkt = timestampStart;      
-            obj.attributes.SisteFerdigTidspunkt = dateNow;      
-            obj.attributes.GateNavn = "testgate";     
+            var request = esriRequest(url, { 
+                responseType: 'json',
+                method: 'post',
+                query: {                     
+                    adds: objJson,
+                    token: token,
+                    f: 'json'
+                }
+            });
 
+        request.then(function(response) {
+            var test = response;
+        });
+        return request;
+        }
+            
+        return null;
             // Koden under er enda ikke støttet i ArcGIS JS 4.10. Men vil etterhvert...
             // var addFeatures = [];
             // const addFeature = new Graphic();
@@ -478,19 +509,8 @@ require([
             // addFeatures.push(addFeature);            
             // const promise = layer.applyEdits({addFeatures: addFeatures}).then(function(result){             
             //     var test = result;
-            // }); 
-
-            var sendObj = [];
-            sendObj.push(obj);
-
-            
-
-
-
-        })        
+            // });          
     }
-    
-    
     
 });
 

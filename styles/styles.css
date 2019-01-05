@@ -78,24 +78,13 @@ body {
     border-bottom: 1px solid #dadada;
   }
   
-  .mapToggleButton {
-    width: 30px;
-    height: 30px;    
-    /* border: 1px solid #999;    
-    border-radius: 50%;
-    position: absolute; */
-    /* right: 15px;
-    top: 15px; */
-    /* box-shadow: 0 0 3px 2px rgba(0,0,0,0.15); */
-    transition: all 150ms linear;
-    /* background: rgba(0, 0, 0, 0.5); */
+  .mapToggleButton {  
     color: #e08a3e;
-    cursor: pointer;
-    /* z-index: 10; */
+    cursor: pointer;    
     font-size: 22px;
-    /* line-height: 46px; */
-    
   }
+  #choosenRodeContainer .fa { font-size: 30px; }
+  #choosenRodeContainer a:hover { text-decoration: none; }
   
   #startStopContainer {
     margin-top: 40px

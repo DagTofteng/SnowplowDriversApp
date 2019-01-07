@@ -293,7 +293,7 @@ require([
         }
         
 
-        if (numberOfQueryTasksCompleted == 2) {
+        if (numberOfQueryTasksCompleted == 1) {
             if (updateHistoryTable) {                
                 var rodeID = results.features[0].attributes.RodeID;
                 var rodeNavn = results.features[0].attributes.RodeNavn;

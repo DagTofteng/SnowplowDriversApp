@@ -61,12 +61,16 @@ require([
     var view;
     
    
-    // if (localStorage.getItem("broyteAppTokenExpiration")) {
-    //     var tokenExpiration = localStorage.getItem("broyteAppTokenExpiration");
-    //     if (!Date.now() > tokenExpiration) {
-
-    //     }
-    // }
+    if (localStorage.getItem("broyteAppTokenExpiration") && localStorage.getItem("broyteAppUserID")) {
+        var tokenExpiration = Date.parse(localStorage.getItem("broyteAppTokenExpiration"));
+        var dateNow = Date.now();
+        // Gyldig tidsrom for token
+        if (dateNow < tokenExpiration) {
+            var token = localStorage.getItem("broyteAppToken");
+            var userId = localStorage.getItem("broyteAppUserID");
+            initMapAndFeatureService(token, userId);
+        }
+    }
 
     function initMapAndFeatureService(token, userId) {        
         IdentityManager.registerToken({
@@ -98,8 +102,13 @@ require([
         //     track.start();
         // });
         window.map = map;
-        
-        showStep("step2");
+
+        if (localStorage.getItem("broyteAppLastRodeID")) {
+            getRodeList(true);
+        }
+        else {        
+            showStep("step2");
+        }
     }
 
     function getUserInfo(userId) {
@@ -118,7 +127,8 @@ require([
         return null;
     }
 
-    function getRodeList() {
+    // Hvis bruker logger inn sjekker vi først om han har en aktiv rode som har satt i gang. Hvis ja - gå direkte hit
+    function getRodeList(redirectToLocalStorageRodeID) {
         var query = new Query();
         query.returnGeometry = false;
         query.outFields = ["RodeID,RodeNavn,SisteStartTidspunkt,SisteFerdigTidspunkt,Editor"];
@@ -126,7 +136,7 @@ require([
         query.returnGeometry = false;
         query.where = "1=1";    
         rodeArray = [];        
-        executeQueryTask(query, combinePointAndPolygonData_rodeList, false);        
+        executeQueryTask(query, combinePointAndPolygonData_rodeList, false, redirectToLocalStorageRodeID);        
     }
 
   
@@ -138,12 +148,12 @@ require([
         query.returnGeometry = false;
         query.where = "RodeID=" + selectedRodeID;    
         
-        executeQueryTask(query, combinePointAndPolygonData_latestDate, updateHistoryTable);
+        executeQueryTask(query, combinePointAndPolygonData_latestDate, updateHistoryTable, false);
     }
 
 
     
-    function executeQueryTask(query, callbackFunction, updateHistoryTable) {
+    function executeQueryTask(query, callbackFunction, updateHistoryTable, redirectToLocalStorageRodeID) {
     var token = localStorage.getItem("broyteAppToken")
         // Kjør 2 queryTasker (mot linje og polygon)
      var numberOfQueryTasksCompleted = 0;
@@ -154,13 +164,13 @@ require([
          
          queryTask.execute(query).then(function(results){    
             numberOfQueryTasksCompleted++;
-            callbackFunction(results, numberOfQueryTasksCompleted, updateHistoryTable);
+            callbackFunction(results, numberOfQueryTasksCompleted, updateHistoryTable, redirectToLocalStorageRodeID);
          }); 
      
      });
     }        
 
-    function combinePointAndPolygonData_rodeList(results, numberOfQueryTasksCompleted) {     
+    function combinePointAndPolygonData_rodeList(results, numberOfQueryTasksCompleted, updateHistoryTable, redirectToLocalStorageRodeID) {     
         array.forEach(results.features, function (item) {
             if (item.attributes.RodeID && item.attributes.RodeNavn) {
                 var existInArray = false;
@@ -184,43 +194,38 @@ require([
         
         rodeArray.sort((a,b) => (a.RodeNavn > b.RodeNavn) ? 1 : ((b.RodeNavn > a.RodeNavn) ? -1 : 0));  
         if (numberOfQueryTasksCompleted == 2) {
-            buildRodeListHTML(rodeArray);
+            buildRodeListHTML(rodeArray, redirectToLocalStorageRodeID);
         }
     };
 
 
 
-    function buildRodeListHTML(data) {
-        var rodeListHtml = "";
-    
+    function buildRodeListHTML(data, redirectToLocalStorageRodeID) {
+        var rodeListHtml = "";        
         array.forEach(data, function (rode) {
             var statusHtml = "<span class='status'></span>";
             var arrow = "<span class='arrow'><i class='fas fa-chevron-right'></i></span>";
             var statusAndArrow = "<div class='statusAndArrow'>" + statusHtml + arrow +"</div>";
-            if (rode.Active) {
-                var name = rode.Editor;
+            if (rode.Active) {                                  
                 getUserInfo(rode.Editor).then(r => {
-                    if (r.data.fullName) {                    
-                        name = r.data.fullName;
-                        // <i class='fas fa-snowplow'></i>
-                        $("#rodeList").find("a[data-value='" + rode.RodeID + "']").find(".status").html("Brøyting pågår (" + name + ")");                        
+                    if (r.data.fullName) {         
+                        var fullName = r.data.fullName;
+                        var userName = r.data.username;                            
+
+                        $("#rodeList").find("a[data-value='" + rode.RodeID + "']").find(".status").html("Brøyting pågår (" + fullName + ")");                        
                     }                    
-                });                
+                });              
             }
-            var listHtml = "<a href='#' data-text='" + rode.RodeNavn + "' data-value='" + rode.RodeID + "' class='list-group-item list-group-item-action text-left'>" + rode.RodeNavn + statusAndArrow +"</a>";
+            var listHtml = "<a href='javascript:void(0)' data-text='" + rode.RodeNavn + "' data-value='" + rode.RodeID + "' class='list-group-item list-group-item-action text-left'>" + rode.RodeNavn + statusAndArrow +"</a>";
             rodeListHtml += listHtml;
         });
 
         $("#rodeList").html(rodeListHtml);
 
-        if (localStorage.getItem("broyteAppLastRodeID")) {
+        if (redirectToLocalStorageRodeID) {
             var lastRodeID = localStorage.getItem("broyteAppLastRodeID");
-            $(("#rodeList").data("value") == lastRodeID).click();
+            $("#rodeList").find("a[data-value='" + lastRodeID + "']").click();
         }
-        else {        
-                selectedRodeText = null;
-                selectedRodeID = null;
-            }
     }
 
     function combinePointAndPolygonData_latestDate(results, numberOfQueryTasksCompleted, updateHistoryTable) {     
@@ -243,8 +248,8 @@ require([
         if (latestPlowDateArray.length > 0) {
             var timestampLatestStart = new Date(latestPlowDateArray[0].SisteStartTidspunkt);
             var timestampLatestStop = new Date(latestPlowDateArray[0].SisteFerdigTidspunkt);
-            var timestampLatestStartReadable = timestampLatestStart.toLocaleString();
-            var timestampLatestStopReadable = timestampLatestStop.toLocaleString();
+            var timestampLatestStartReadable = timestampLatestStart.toLocaleString("nb-NO");
+            var timestampLatestStopReadable = timestampLatestStop.toLocaleString("nb-NO");
            
             $("#latestPlowStartDate").html(timestampLatestStartReadable);
             $("#latestPlowStopDate").html(timestampLatestStopReadable);                        
@@ -254,7 +259,7 @@ require([
                 var now = new Date();    
                 timestampStart = timestampLatestStart.getTime();
                 var diff = diff_hours(timestampStart, now);  
-                $("#alertBox #alertText").html("Brøyting pågår på valgt rode. <br/>Du må avslutte forrige før du kan starte en ny.");
+                $("#alertBox #alertText").html("Brøyting pågår på denne roden. <br/>Du må avslutte før du kan starte på nytt.");
                 $("#alertBox").show();
                 $("#startButton").hide();
                 $("#stopButton").show();        
@@ -269,12 +274,11 @@ require([
 
             }
 
-            if (updateHistoryTable) {
-                var numberOfMs = (timestampLatestStop - timestampLatestStart);
-                var numberOfMinutes = Math.floor((numberOfMs/1000)/60);
+            if (updateHistoryTable) {                
                 var rodeID = results.features[0].attributes.RodeID;
                 var rodeNavn = results.features[0].attributes.RodeNavn;
-                updateFeatureServiceTable(rodeID, rodeNavn, timestampLatestStart, timestampLatestStop, numberOfMinutes);
+                var defaultEstMinutes = results.features[0].attributes.EmpTidsforbrukMinutter;
+                updateFeatureServiceTable(rodeID, rodeNavn, timestampLatestStart, timestampLatestStop, defaultEstMinutes);
             }
 
         }
@@ -303,7 +307,9 @@ require([
                 if (parsedRes && parsedRes.token) {
                     localStorage.setItem("broyteAppToken", parsedRes.token);   
                     var expiration = new Date();
+                    expiration.setHours(expiration.getHours() + 12)
                     localStorage.setItem("broyteAppTokenExpiration", expiration);   
+                    localStorage.setItem("broyteAppUserID", un);   
 
                     initMapAndFeatureService(parsedRes.token, un);        
                     
@@ -313,9 +319,7 @@ require([
                     $("#loginText").text("Brukernavn og/eller passord stemmer ikke.")
                 }
             }
-            else {
-                $("#loginText").text("Brukernavn og/eller passord stemmer ikke.")
-            }
+           
         }
     
     });
@@ -351,7 +355,7 @@ require([
         $("#stopButton").show();        
         
         timestampStart = Date.now();
-        var timestampStartReadable = new Date(timestampStart).toLocaleString();
+        var timestampStartReadable = new Date(timestampStart).toLocaleString("nb-NO");
         
         var startText = selectedRodeText + " ble startet brøytet<br/>" + timestampStartReadable;
         $("#timeInfoText").html(startText);
@@ -369,7 +373,7 @@ require([
         $("#stopButton").hide();
         
         timestampStop = Date.now();        
-        var timestampStopReadable = new Date(timestampStop).toLocaleString();
+        var timestampStopReadable = new Date(timestampStop).toLocaleString("nb-NO");
         
         
         var totalTimeReadable = diff_hours(timestampStart, timestampStop);    
@@ -377,9 +381,9 @@ require([
         $("#timeInfoText").html(stopText);    
         
         var numberOfMs = (timestampStop - timestampStart);
-        var numberOfMinutes = Math.floor((numberOfMs/1000)/60);
-        if (numberOfMinutes < 5) {
-            $("#alertBox #alertText").html("Brøytinger under 5 minutter logges ikke.");
+        var numberOfSeconds = Math.floor(numberOfMs/1000);
+        if (numberOfSeconds < 10) {
+            $("#alertBox #alertText").html("Brøytinger under 10 sekunder logges ikke.");
             $("#alertBox").show();
         }
         
@@ -456,7 +460,7 @@ require([
 
         if (id == "step2") {
              // Get unique Rodelist with status
-            getRodeList();      
+            getRodeList(false);      
         }
 
         // 3 = Vis valgt rute med evt Playbutton. Hent opp sist-måkt dato.
@@ -512,17 +516,22 @@ require([
         })        
     }
 
-    function updateFeatureServiceTable(rodeId, rodeNavn, timestampStart, timestampStop, numberOfMinutes) {          
-        if (numberOfMinutes < 5) {
+    function updateFeatureServiceTable(rodeId, rodeNavn, timestampStart, timestampStop, defaultEstMinutes) {          
+        var numberOfMs = (timestampStop - timestampStart);
+        var numberOfSeconds = Math.floor(numberOfMs/1000);
+        if (numberOfSeconds < 10) {
             // do nothing
         }        
         else {
-            // Hvis over 600 = 10t 
-            if (numberOfMinutes > 600) {
-                $("#alertBox #alertText").html("Brøytingen tok over 10 timer. Vi tror du glemte å skru den av, og har derfor satt avsluttet tid til 8 timer.");
+            var numberOfMinutes = Math.floor(numberOfSeconds/60);
+            // Hvis over 36000 = 10t 
+            numberOfSeconds = 36001;
+            if (numberOfSeconds > 36000) {
+                $("#alertBox #alertText").html("Brøytingen tok over 10 timer. Vi tror du glemte å skru den av, og har derfor estimert tiden.");
                 $("#alertBox").show();
                 timestampStop = timestampStart;
-                timestampStop.setHours(timestampStart.getHours() + 8);
+                timestampStop.setMinutes(timestampStart.getMinutes() + defaultEstMinutes);
+                numberOfMinutes = defaultEstMinutes;
             }
             var token = localStorage.getItem("broyteAppToken");            
             var url = featureServiceUrl + featureServiceTableID + "/applyEdits?token=" + token

@@ -143,7 +143,7 @@ require([
     }
 
   
-    function getLatestDate(updateHistoryTable) {
+    function getLatestDate(updateHistoryTable, ) {
         var query = new Query();
         query.returnGeometry = false;
         query.outFields = ["*"];
@@ -151,7 +151,21 @@ require([
         query.returnGeometry = false;
         query.where = "RodeID=" + selectedRodeID;    
         
-        executeQueryTask(query, combinePointAndPolygonData_latestDate, updateHistoryTable, false);
+        // executeQueryTask(query, combinePointAndPolygonData_latestDate, updateHistoryTable, false);
+        
+        var token = localStorage.getItem("broyteAppToken")
+        // Kjør 2 queryTasker (mot linje og polygon)
+        var numberOfQueryTasksCompleted = 0;
+        array.forEach(featureServiceIDList, function (id) {                       
+            var queryTask = new QueryTask({
+                url: featureServiceUrl + id + "?token=" + token
+            });
+         
+            queryTask.execute(query).then(function(results){    
+                numberOfQueryTasksCompleted++;
+                combinePointAndPolygonData_latestDate(results, numberOfQueryTasksCompleted, updateHistoryTable);
+            });      
+        });
     }
 
 
@@ -276,15 +290,18 @@ require([
                 $("#alertBox").hide();
 
             }
+        }
+        
 
+        if (numberOfQueryTasksCompleted == 2) {
             if (updateHistoryTable) {                
                 var rodeID = results.features[0].attributes.RodeID;
                 var rodeNavn = results.features[0].attributes.RodeNavn;
                 var defaultEstMinutes = results.features[0].attributes.EmpTidsforbrukMinutter;
                 updateFeatureServiceTable(rodeID, rodeNavn, timestampLatestStart, timestampLatestStop, defaultEstMinutes);
             }
-
         }
+
         
     };
     
@@ -492,7 +509,9 @@ require([
         
         var token = localStorage.getItem("broyteAppToken");
         var dateNow = Date.now();  
-        array.forEach(featureServiceIDList, function (id) {        
+
+        var isHistoryTableUpdated = false;      
+        array.forEach(featureServiceIDList, function (id) {              
             var queryTask = new QueryTask({
                 url: featureServiceUrl + id + "?token=" + token
             });        
@@ -518,8 +537,14 @@ require([
                 // Men vi fjerner de ikke fra featureServicen da visualisering i kart bruker tidspunkt-feltene. 
                 // Når bruker derimot klikker "start" neste gang blir de overskrevet i featureservicen.
                 if (fieldToUpdate == "SisteFerdigTidspunkt") { 
-                    layer.applyEdits({updateFeatures: updateFeatures}).then(function(result){             
-                        getLatestDate(true);
+                    layer.applyEdits({updateFeatures: updateFeatures}).then(function(result){  
+                        if (isHistoryTableUpdated) {
+                            getLatestDate(false);
+                        }
+                        else {
+                            getLatestDate(true);
+                            isHistoryTableUpdated = true;
+                        }
                     }); 
                 }
                 else {

@@ -87,16 +87,16 @@ require([
         view = new MapView({
             container: "map",
             map: map,                        
-            });
+        });
             // Create an instance of the Track widget
         // and add it to the view's UI
-        var track = new Track({
-            view: view
-        });
-        view.ui.add(track, "top-left");            
-        view.when(function() {
-            track.start();
-        });
+        // var track = new Track({
+        //     view: view
+        // });
+        // view.ui.add(track, "top-left");            
+        // view.when(function() {
+        //     track.start();
+        // });
         window.map = map;
         
         showStep("step2");

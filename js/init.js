@@ -82,6 +82,8 @@ require([
             var fullname = t.data.fullName;
             $("#userInfo").text(fullname)
         });
+
+        $("#logout").show();
         
         var map = new WebMap({
         portalItem: {
@@ -111,6 +113,7 @@ require([
         }
     }
 
+   
     function getUserInfo(userId) {
         var getUserInfoUrl = mapsSharingUrl + "community/users/" + userId;
         var token = localStorage.getItem("broyteAppToken");
@@ -322,6 +325,16 @@ require([
            
         }
     
+    });
+
+    $(document).on("click", "#logout", function (e) {
+        
+        localStorage.clear();
+        IdentityManager.destroyCredentials();
+        $("#userInfo").text("");        
+        $("#logout").hide();
+        showStep("step1");
+        window.location.reload();
     });
 
     $(document).on("click", "#rodeList a", function (e) {

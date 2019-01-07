@@ -114,6 +114,9 @@ body {
     padding: 5px;
     margin-bottom: 0;
   }
+  .alert-dismissible .close {
+    padding: 4px 10px;
+  }
   
 .btn-success { background:#e08a3e; border-color:#e08a3e!important; color: white!important; box-shadow: none!important}
 .btn-success:hover { background:#cc7223!important; }

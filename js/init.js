@@ -21,6 +21,7 @@ require([
     "esri/identity/IdentityManager",
     "esri/tasks/QueryTask",
     "esri/tasks/support/Query",
+    "esri/widgets/Track",
     "dojo/domReady!"
 ], function(
     array,
@@ -44,7 +45,8 @@ require([
     ServerInfo,
     IdentityManager,
     QueryTask, 
-    Query) {
+    Query,
+    Track) {
 
     var mapsSharingUrl = "https://testkommune.maps.arcgis.com/sharing/rest/";
     var featureServiceUrl = "https://services.arcgis.com/PdUYt91ohJfR04kk/arcgis/rest/services/Skedsmo_Br%C3%B8yteroder_WFL1/FeatureServer/";    
@@ -56,6 +58,7 @@ require([
     var selectedRodeText;
     var timer;
     var rodeArray = [];
+    var view;
     
    
     // if (localStorage.getItem("broyteAppTokenExpiration")) {
@@ -81,9 +84,18 @@ require([
             id: "4db252250bdb46338e49f7dbfc57c661"  
             }
         });        
-        var view = new MapView({
+        view = new MapView({
             container: "map",
             map: map,                        
+            });
+            // Create an instance of the Track widget
+        // and add it to the view's UI
+        var track = new Track({
+            view: view
+        });
+        view.ui.add(track, "top-left");            
+        view.when(function() {
+            track.start();
         });
         window.map = map;
         
@@ -117,6 +129,7 @@ require([
         executeQueryTask(query, combinePointAndPolygonData_rodeList, false);        
     }
 
+  
     function getLatestDate(updateHistoryTable) {
         var query = new Query();
         query.returnGeometry = false;
@@ -127,6 +140,8 @@ require([
         
         executeQueryTask(query, combinePointAndPolygonData_latestDate, updateHistoryTable);
     }
+
+
     
     function executeQueryTask(query, callbackFunction, updateHistoryTable) {
     var token = localStorage.getItem("broyteAppToken")
@@ -172,6 +187,9 @@ require([
             buildRodeListHTML(rodeArray);
         }
     };
+
+
+
     function buildRodeListHTML(data) {
         var rodeListHtml = "";
     
@@ -227,11 +245,7 @@ require([
             var timestampLatestStop = new Date(latestPlowDateArray[0].SisteFerdigTidspunkt);
             var timestampLatestStartReadable = timestampLatestStart.toLocaleString();
             var timestampLatestStopReadable = timestampLatestStop.toLocaleString();
-            if (updateHistoryTable) {
-                var numberOfMs = (timestampLatestStop - timestampLatestStart);
-                var numberOfMinutes = Math.floor((numberOfMs/1000)/60);
-                updateFeatureServiceTable(results.features[0].attributes.RodeID, timestampLatestStart, timestampLatestStop, numberOfMinutes);
-            }
+           
             $("#latestPlowStartDate").html(timestampLatestStartReadable);
             $("#latestPlowStopDate").html(timestampLatestStopReadable);                        
             
@@ -240,8 +254,8 @@ require([
                 var now = new Date();    
                 timestampStart = timestampLatestStart.getTime();
                 var diff = diff_hours(timestampStart, now);  
-                
-                $("#warningPlowingIsActive").show();
+                $("#alertBox #alertText").html("Brøyting pågår på valgt rode. <br/>Du må avslutte forrige før du kan starte en ny.");
+                $("#alertBox").show();
                 $("#startButton").hide();
                 $("#stopButton").show();        
                 
@@ -251,8 +265,16 @@ require([
                 incrementSeconds(timestampLatestStart);
             }
             else {                
-                $("#warningPlowingIsActive").hide();
+                $("#alertBox").hide();
 
+            }
+
+            if (updateHistoryTable) {
+                var numberOfMs = (timestampLatestStop - timestampLatestStart);
+                var numberOfMinutes = Math.floor((numberOfMs/1000)/60);
+                var rodeID = results.features[0].attributes.RodeID;
+                var rodeNavn = results.features[0].attributes.RodeNavn;
+                updateFeatureServiceTable(rodeID, rodeNavn, timestampLatestStart, timestampLatestStop, numberOfMinutes);
             }
 
         }
@@ -309,6 +331,8 @@ require([
             localStorage.setItem("broyteAppLastRodeID", newValueID);    
             $("#choosenRode").html(newValueText);
             showStep("step3");    
+
+            showRodeOnMap(selectedRodeID);
         }
         else {        
             selectedRodeText = null;
@@ -352,6 +376,13 @@ require([
         var stopText = selectedRodeText + " ble avsluttet<br/>" + timestampStopReadable + "<br><br>Tid brukt: " + totalTimeReadable;
         $("#timeInfoText").html(stopText);    
         
+        var numberOfMs = (timestampStop - timestampStart);
+        var numberOfMinutes = Math.floor((numberOfMs/1000)/60);
+        if (numberOfMinutes < 5) {
+            $("#alertBox #alertText").html("Brøytinger under 5 minutter logges ikke.");
+            $("#alertBox").show();
+        }
+        
     });
 
     $(document).on("click", "#mapToggleButton", function () {
@@ -362,6 +393,27 @@ require([
         
     });
 
+
+    function showRodeOnMap(rodeId) {
+        // Filterer ut de to featureLayersene (line og polygon) som skal filterers og vises i kart
+        // "Skedsmo_Brøyteroder_WFL1_6521"
+        // "Skedsmo_Brøyteroder_WFL1_9515"
+        var layers = window.map.allLayers.filter(function(layer) {
+            return layer.id.indexOf("Skedsmo_Brøyteroder") > -1;
+        });
+        array.forEach(layers.items, function (layer) {            
+            layer.definitionExpression = "RodeID='" + rodeId + "'";             
+            layer.queryExtent().then(function(results){
+                // go to the extent of the results satisfying the query
+                if (results && results.extent) {
+                    setTimeout(() => {
+                        view.goTo(results.extent);    
+                    }, 500);
+                    
+                }            
+              });
+        });
+    }
     
 
     function diff_hours(startTime, stopTime) 
@@ -460,47 +512,48 @@ require([
         })        
     }
 
-    function updateFeatureServiceTable(rodeId, timestampStart, timestampStop, numberOfMinutes) {                         
-        var token = localStorage.getItem("broyteAppToken");
-        
-        var url = featureServiceUrl + featureServiceTableID + "/applyEdits?token=" + token
-
-        var obj = [
-            { 
-                "attributes": {                 
-                    RodeID:	rodeId,                
-                    SisteStartTidspunkt: timestampStart,
-                    SisteFerdigTidspunkt: timestampStop,
-                    FaktiskTidsforbrukMin: numberOfMinutes
-                }            
+    function updateFeatureServiceTable(rodeId, rodeNavn, timestampStart, timestampStop, numberOfMinutes) {          
+        if (numberOfMinutes < 5) {
+            // do nothing
+        }        
+        else {
+            // Hvis over 600 = 10t 
+            if (numberOfMinutes > 600) {
+                $("#alertBox #alertText").html("Brøytingen tok over 10 timer. Vi tror du glemte å skru den av, og har derfor satt avsluttet tid til 8 timer.");
+                $("#alertBox").show();
+                timestampStop = timestampStart;
+                timestampStop.setHours(timestampStart.getHours() + 8);
             }
-        ];
-        var objJson = JSON.stringify(obj);
-
-        
-        if (token) {
-            // var request = xhr(url, {
-            //     method: 'POST',
-            //     data: objJson,
-            //     headers: { 'Content-Type': 'application/json', "token": "Bearer " + sessionStorage.getItem("token_webapi") }                        
-            // });            
-            
-            var request = esriRequest(url, { 
-                responseType: 'json',
-                method: 'post',
-                query: {                     
-                    adds: objJson,
-                    token: token,
-                    f: 'json'
+            var token = localStorage.getItem("broyteAppToken");            
+            var url = featureServiceUrl + featureServiceTableID + "/applyEdits?token=" + token
+            var obj = [
+                { 
+                    "attributes": {                 
+                        RodeID:	rodeId, 
+                        RodeNavn: rodeNavn,               
+                        SisteStartTidspunkt: timestampStart,
+                        SisteFerdigTidspunkt: timestampStop,
+                        FaktiskTidsforbrukMin: numberOfMinutes
+                    }            
                 }
-            });
+            ];
+            var objJson = JSON.stringify(obj);
+            if (token) {
+                var request = esriRequest(url, { 
+                    responseType: 'json',
+                    method: 'post',
+                    query: {                     
+                        adds: objJson,
+                        token: token,
+                        f: 'json'
+                    }
+                });
 
-        request.then(function(response) {
-            var test = response;
-        });
-        return request;
+                request.then(function(response) {
+                    var test = response;
+                });            
+            }
         }
-            
         return null;
             // Koden under er enda ikke støttet i ArcGIS JS 4.10. Men vil etterhvert...
             // var addFeatures = [];

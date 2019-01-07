@@ -525,7 +525,7 @@ require([
         else {
             var numberOfMinutes = Math.floor(numberOfSeconds/60);
             // Hvis over 36000 = 10t 
-            numberOfSeconds = 36001;
+            
             if (numberOfSeconds > 36000) {
                 $("#alertBox #alertText").html("Brøytingen tok over 10 timer. Vi tror du glemte å skru den av, og har derfor estimert tiden.");
                 $("#alertBox").show();
